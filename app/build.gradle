@@ -2,9 +2,17 @@ plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
 }
+
+def releaseStoreFile = System.getenv("ANDROID_KEYSTORE_PATH")
+def releaseStorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+def releaseKeyAlias = System.getenv("ANDROID_KEY_ALIAS")
+def releaseKeyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+def hasReleaseSigning = releaseStoreFile && releaseStorePassword && releaseKeyAlias && releaseKeyPassword
+
 android {
     namespace 'com.allconnect.app'
     compileSdk 35
+
     defaultConfig {
         applicationId 'com.allconnect.app'
         minSdk 26
@@ -12,11 +20,27 @@ android {
         versionCode 2
         versionName '1.1-preview'
     }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // Preview-only signing with the runner's debug certificate.
-            // Replace with a private, persistent release key before public distribution.
-            signingConfig signingConfigs.debug
+            // Use persistent private signing credentials when supplied by CI.
+            // Debug signing remains only as a temporary preview fallback.
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            } else {
+                signingConfig signingConfigs.debug
+            }
             minifyEnabled false
         }
     }
