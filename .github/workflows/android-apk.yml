@@ -11,10 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Unpack Android project
-        run: |
-          unzip -q source/ALL-CONNECT-Android-MVP.zip
-          cd all-connect
-          echo "PROJECT_DIR=$PWD" >> "$GITHUB_ENV"
+        run: unzip -q ALL-CONNECT-Android-MVP.zip
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
