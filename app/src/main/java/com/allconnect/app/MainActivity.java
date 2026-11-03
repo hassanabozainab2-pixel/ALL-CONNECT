@@ -2,8 +2,8 @@ package com.allconnect.app;
 
 import android.app.Activity;
 import android.os.Bundle;
-import android.provider.Settings;
-import android.content.ComponentName;
+
+
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -55,12 +55,9 @@ public class MainActivity extends Activity {
         permissionStatus = text("", 14, Color.rgb(8,125,114), true);
         LinearLayout.LayoutParams statusP=params(-1,-2);statusP.topMargin=dp(16);statusP.bottomMargin=dp(8);page.addView(permissionStatus,statusP);
 
-        Button permission = button("تفعيل الوصول للإشعارات");
+        Button permission = button("ميزة الإشعارات قيد التجهيز");
+        permission.setEnabled(false);
         page.addView(permission, params(-1,-2));
-        permission.setOnClickListener(v -> {
-            try { startActivity(new android.content.Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)); }
-            catch (Exception e) { Toast.makeText(this,"تعذر فتح إعدادات الإشعارات",Toast.LENGTH_LONG).show(); }
-        });
 
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
@@ -85,19 +82,12 @@ public class MainActivity extends Activity {
         TextView privacy=text("الخصوصية: الإشعارات تُحفظ محلياً على هاتفك فقط. لا يرسل التطبيق محتواها إلى خادم. يمكنك إيقاف الصلاحية من إعدادات أندرويد في أي وقت.",12,Color.rgb(113,128,150),false);
         LinearLayout.LayoutParams privacyP=params(-1,-2);privacyP.topMargin=dp(22);page.addView(privacy,privacyP);
         setContentView(scroll);
-        refreshPermissionStatus();
+        permissionStatus.setText("نسخة معاينة: لا تطلب أي صلاحيات حساسة");
+        permissionStatus.setTextColor(Color.rgb(8,125,114));
         renderNotifications();
     }
 
-    @Override protected void onResume() { super.onResume(); if(permissionStatus!=null)refreshPermissionStatus(); if(list!=null)renderNotifications(); }
-
-    private void refreshPermissionStatus() {
-        String enabled=Settings.Secure.getString(getContentResolver(),"enabled_notification_listeners");
-        String mine=new ComponentName(this,NotificationCaptureService.class).flattenToString();
-        boolean allowed=enabled!=null && enabled.toLowerCase(Locale.ROOT).contains(mine.toLowerCase(Locale.ROOT));
-        permissionStatus.setText(allowed ? "● صلاحية الوصول مفعّلة" : "○ الصلاحية غير مفعّلة — اضغط الزر ثم اختر ALL CONNECT");
-        permissionStatus.setTextColor(allowed?Color.rgb(8,125,114):Color.rgb(194,65,75));
-    }
+    @Override protected void onResume() { super.onResume(); if(list!=null)renderNotifications(); }
 
     private void renderNotifications() {
         list.removeAllViews();
