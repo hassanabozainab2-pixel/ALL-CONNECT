@@ -7,6 +7,15 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
+import android.util.Base64;
+import org.json.JSONObject;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
@@ -25,6 +34,7 @@ public class LoginActivity extends Activity {
     private EditText password;
     private static final String SUPABASE_URL = "https://crbmlnjpxkzopgwlwgxv.supabase.co";
     private static final String AUTH_CALLBACK = "allconnect://login-callback";
+    private static final String SUPABASE_ANON_KEY = "sb_publishable_nYPqn9wXEXM6hZRtTJmKEA_dI3vafeX";
 
     private int dp(float v) {
         return (int)(v * getResources().getDisplayMetrics().density + 0.5f);
@@ -164,15 +174,20 @@ public class LoginActivity extends Activity {
 
     private void startGoogleSignIn() {
         try {
-            Uri auth = Uri.parse(SUPABASE_URL + "/auth/v1/authorize")
-                    .buildUpon()
+            byte[] random = new byte[32];
+            new SecureRandom().nextBytes(random);
+            String verifier = Base64.encodeToString(random, Base64.URL_SAFE | Base64.NO_PADDING | Base64.NO_WRAP);
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(verifier.getBytes("UTF-8"));
+            String challenge = Base64.encodeToString(digest, Base64.URL_SAFE | Base64.NO_PADDING | Base64.NO_WRAP);
+            getSharedPreferences("auth", MODE_PRIVATE).edit().putString("pkce_verifier", verifier).apply();
+            Uri auth = Uri.parse(SUPABASE_URL + "/auth/v1/authorize").buildUpon()
                     .appendQueryParameter("provider", "google")
                     .appendQueryParameter("redirect_to", AUTH_CALLBACK)
-                    .build();
-            Intent browser = new Intent(Intent.ACTION_VIEW, auth);
-            startActivity(browser);
+                    .appendQueryParameter("code_challenge", challenge)
+                    .appendQueryParameter("code_challenge_method", "s256").build();
+            startActivity(new Intent(Intent.ACTION_VIEW, auth));
         } catch (Exception e) {
-            showInfo("تعذر فتح Google", "تأكد من وجود متصفح واتصال بالإنترنت ثم حاول مرة أخرى.");
+            showInfo("تعذر فتح Google", "حصل خطأ أثناء تجهيز تسجيل الدخول. حاول مرة أخرى.");
         }
     }
 
@@ -186,30 +201,61 @@ public class LoginActivity extends Activity {
         if (intent == null || intent.getData() == null) return;
         Uri data = intent.getData();
         if (!"allconnect".equals(data.getScheme()) || !"login-callback".equals(data.getHost())) return;
-        String fragment = data.getFragment();
-        Uri tokens = Uri.parse("https://local.invalid/?" + (fragment == null ? "" : fragment));
-        String error = tokens.getQueryParameter("error_description");
-        if (error == null) error = tokens.getQueryParameter("error");
-        if (error != null) {
-            showInfo("تعذر تسجيل الدخول", error);
+        String error = data.getQueryParameter("error_description");
+        if (error == null) error = data.getQueryParameter("error");
+        if (error != null) { showInfo("تعذر تسجيل الدخول", error); return; }
+        String code = data.getQueryParameter("code");
+        if (code == null || code.isEmpty()) {
+            showInfo("لم يكتمل تسجيل الدخول", "لم يرجع Google رمز الدخول. تأكد من إعداد Google داخل Supabase.");
             return;
         }
-        String accessToken = tokens.getQueryParameter("access_token");
-        String refreshToken = tokens.getQueryParameter("refresh_token");
-        if (accessToken == null || accessToken.isEmpty()) {
-            showInfo("لم يكتمل تسجيل الدخول", "لم يرجع Google رمز الدخول. راجع إعداد مزود Google في Supabase ثم حاول مرة أخرى.");
-            return;
-        }
-        getSharedPreferences("auth", MODE_PRIVATE).edit()
-                .putString("access_token", accessToken)
-                .putString("refresh_token", refreshToken == null ? "" : refreshToken)
-                .putString("provider", "google")
-                .apply();
-        Toast.makeText(this, "تم تسجيل الدخول بنجاح", Toast.LENGTH_LONG).show();
-        Intent home = new Intent(this, MainActivity.class);
-        home.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
-        startActivity(home);
-        finish();
+        String verifier = getSharedPreferences("auth", MODE_PRIVATE).getString("pkce_verifier", null);
+        if (verifier == null) { showInfo("انتهت محاولة الدخول", "ابدأ تسجيل الدخول من جديد."); return; }
+        exchangeAuthCode(code, verifier);
+    }
+
+    private void exchangeAuthCode(String code, String verifier) {
+        new Thread(() -> {
+            HttpURLConnection connection = null;
+            try {
+                connection = (HttpURLConnection) new URL(SUPABASE_URL + "/auth/v1/token?grant_type=pkce").openConnection();
+                connection.setRequestMethod("POST");
+                connection.setConnectTimeout(20000);
+                connection.setReadTimeout(20000);
+                connection.setDoOutput(true);
+                connection.setRequestProperty("Content-Type", "application/json");
+                connection.setRequestProperty("apikey", SUPABASE_ANON_KEY);
+                JSONObject body = new JSONObject();
+                body.put("auth_code", code);
+                body.put("code_verifier", verifier);
+                try (OutputStream os = connection.getOutputStream()) { os.write(body.toString().getBytes("UTF-8")); }
+                int status = connection.getResponseCode();
+                BufferedReader reader = new BufferedReader(new InputStreamReader(
+                        status >= 200 && status < 300 ? connection.getInputStream() : connection.getErrorStream(), "UTF-8"));
+                StringBuilder response = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) response.append(line);
+                reader.close();
+                if (status < 200 || status >= 300) throw new Exception(response.toString());
+                JSONObject session = new JSONObject(response.toString());
+                String access = session.optString("access_token", "");
+                String refresh = session.optString("refresh_token", "");
+                if (access.isEmpty()) throw new Exception("لم يرجع خادم الحساب رمز الدخول.");
+                getSharedPreferences("auth", MODE_PRIVATE).edit().putString("access_token", access)
+                        .putString("refresh_token", refresh).putString("provider", "google")
+                        .remove("pkce_verifier").apply();
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "تم تسجيل الدخول بنجاح", Toast.LENGTH_LONG).show();
+                    Intent home = new Intent(this, MainActivity.class);
+                    home.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(home);
+                    finish();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> showInfo("تعذر إكمال الدخول",
+                        "راجع إعداد Google في Supabase واتصال الإنترنت، ثم جرّب مرة أخرى.\n" + e.getMessage()));
+            } finally { if (connection != null) connection.disconnect(); }
+        }).start();
     }
 
     private void showRegisterDialog() {
