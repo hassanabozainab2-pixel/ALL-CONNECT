@@ -6,6 +6,7 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
@@ -22,6 +23,8 @@ public class LoginActivity extends Activity {
     private final int orange = Color.rgb(255, 145, 55);
     private EditText phone;
     private EditText password;
+    private static final String SUPABASE_URL = "https://crbmlnjpxkzopgwlwgxv.supabase.co";
+    private static final String AUTH_CALLBACK = "allconnect://login-callback";
 
     private int dp(float v) {
         return (int)(v * getResources().getDisplayMetrics().density + 0.5f);
@@ -32,6 +35,7 @@ public class LoginActivity extends Activity {
         getWindow().setStatusBarColor(navy);
         getWindow().setNavigationBarColor(navy);
         buildLoginScreen();
+        handleAuthCallback(getIntent());
     }
 
     private void buildLoginScreen() {
@@ -135,7 +139,7 @@ public class LoginActivity extends Activity {
         googleBg.setStroke(dp(1), Color.rgb(215, 222, 235));
         google.setBackground(googleBg);
         panel.addView(google, params(-1, 52));
-        google.setOnClickListener(v -> showInfo("Google", "زر Google جاهز في التصميم، ويلزم إعداد OAuth وربطه قبل تسجيل الدخول الحقيقي."));
+        google.setOnClickListener(v -> startGoogleSignIn());
 
         LinearLayout signupRow = new LinearLayout(this);
         signupRow.setGravity(Gravity.CENTER);
@@ -156,6 +160,56 @@ public class LoginActivity extends Activity {
         page.addView(footer, footerP);
 
         setContentView(scroll);
+    }
+
+    private void startGoogleSignIn() {
+        try {
+            Uri auth = Uri.parse(SUPABASE_URL + "/auth/v1/authorize")
+                    .buildUpon()
+                    .appendQueryParameter("provider", "google")
+                    .appendQueryParameter("redirect_to", AUTH_CALLBACK)
+                    .build();
+            Intent browser = new Intent(Intent.ACTION_VIEW, auth);
+            startActivity(browser);
+        } catch (Exception e) {
+            showInfo("تعذر فتح Google", "تأكد من وجود متصفح واتصال بالإنترنت ثم حاول مرة أخرى.");
+        }
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleAuthCallback(intent);
+    }
+
+    private void handleAuthCallback(Intent intent) {
+        if (intent == null || intent.getData() == null) return;
+        Uri data = intent.getData();
+        if (!"allconnect".equals(data.getScheme()) || !"login-callback".equals(data.getHost())) return;
+        String fragment = data.getFragment();
+        Uri tokens = Uri.parse("https://local.invalid/?" + (fragment == null ? "" : fragment));
+        String error = tokens.getQueryParameter("error_description");
+        if (error == null) error = tokens.getQueryParameter("error");
+        if (error != null) {
+            showInfo("تعذر تسجيل الدخول", error);
+            return;
+        }
+        String accessToken = tokens.getQueryParameter("access_token");
+        String refreshToken = tokens.getQueryParameter("refresh_token");
+        if (accessToken == null || accessToken.isEmpty()) {
+            showInfo("لم يكتمل تسجيل الدخول", "لم يرجع Google رمز الدخول. راجع إعداد مزود Google في Supabase ثم حاول مرة أخرى.");
+            return;
+        }
+        getSharedPreferences("auth", MODE_PRIVATE).edit()
+                .putString("access_token", accessToken)
+                .putString("refresh_token", refreshToken == null ? "" : refreshToken)
+                .putString("provider", "google")
+                .apply();
+        Toast.makeText(this, "تم تسجيل الدخول بنجاح", Toast.LENGTH_LONG).show();
+        Intent home = new Intent(this, MainActivity.class);
+        home.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(home);
+        finish();
     }
 
     private void showRegisterDialog() {
