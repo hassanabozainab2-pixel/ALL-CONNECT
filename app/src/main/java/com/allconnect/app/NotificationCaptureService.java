@@ -8,8 +8,19 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 public class NotificationCaptureService extends NotificationListenerService {
+    // Only capture notifications from the social platforms explicitly disclosed in the app.
+    private static final java.util.Set<String> ALLOWED_PACKAGES = new java.util.HashSet<>(
+            java.util.Arrays.asList(
+                    "com.whatsapp",
+                    "com.instagram.android",
+                    "com.facebook.katana",
+                    "org.telegram.messenger",
+                    "com.google.android.youtube",
+                    "com.twitter.android"
+            ));
+
     @Override public void onNotificationPosted(StatusBarNotification sbn) {
-        if(sbn==null || sbn.getPackageName()==null) return;
+        if(sbn==null || sbn.getPackageName()==null || !ALLOWED_PACKAGES.contains(sbn.getPackageName())) return;
         Notification n=sbn.getNotification();
         if(n==null || n.extras==null) return;
         Bundle extras=n.extras;
