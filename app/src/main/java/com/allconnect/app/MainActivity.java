@@ -77,10 +77,14 @@ public class MainActivity extends Activity {
         page.addView(permissionStatus,params(-1,-2));
         Button permission=button("تفعيل صلاحية الإشعارات");
         LinearLayout.LayoutParams pp=params(-1,-2);pp.topMargin=dp(9);page.addView(permission,pp);
-        permission.setOnClickListener(v -> {
-            try { startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)); }
-            catch(Exception e) { Toast.makeText(this,"افتح إعدادات الإشعارات من إعدادات الهاتف",Toast.LENGTH_LONG).show(); }
-        });
+        permission.setOnClickListener(v -> new android.app.AlertDialog.Builder(this)
+                .setTitle("إذن الوصول للإشعارات")
+                .setMessage("إذا وافقت، سيقرأ ALL CONNECT محتوى الإشعارات التي تصدر من واتساب وإنستجرام وفيسبوك وتيليجرام ويوتيوب وX فقط، ليعرضها داخل التطبيق. تُحفظ على هاتفك محلياً في هذه النسخة ولا تُرسل إلى خادم. يمكنك رفض الإذن أو إيقافه في أي وقت من إعدادات أندرويد.")
+                .setNegativeButton("إلغاء", (d, w) -> d.dismiss())
+                .setPositiveButton("متابعة إلى الإعدادات", (d, w) -> {
+                    try { startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)); }
+                    catch(Exception e) { Toast.makeText(this,"افتح إعدادات الإشعارات من إعدادات الهاتف",Toast.LENGTH_LONG).show(); }
+                }).show());
 
         LinearLayout controls=new LinearLayout(this);controls.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout.LayoutParams cp=params(-1,-2);cp.topMargin=dp(12);cp.bottomMargin=dp(8);page.addView(controls,cp);
