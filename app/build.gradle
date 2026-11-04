@@ -34,13 +34,11 @@ android {
 
     buildTypes {
         release {
-            // Use persistent private signing credentials when supplied by CI.
-            // Debug signing remains only as a temporary preview fallback.
-            if (hasReleaseSigning) {
-                signingConfig signingConfigs.release
-            } else {
-                signingConfig signingConfigs.debug
+            // Never publish a release APK signed with the public debug key.
+            if (!hasReleaseSigning) {
+                throw new GradleException("Release signing is not configured. Add a private release keystore to CI secrets.")
             }
+            signingConfig signingConfigs.release
             minifyEnabled false
         }
     }
