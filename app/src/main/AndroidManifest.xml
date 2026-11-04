@@ -18,14 +18,5 @@
                 <data android:scheme="allconnect" android:host="login-callback" />
             </intent-filter>
         </activity>
-        <service
-            android:name=".NotificationCaptureService"
-            android:label="ALL CONNECT"
-            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.service.notification.NotificationListenerService" />
-            </intent-filter>
-        </service>
     </application>
 </manifest>
